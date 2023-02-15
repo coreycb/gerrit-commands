@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+#
+# Add a comment to a gerrit review
+#
+# Example:
+#   add-comment --topic antelope-support --message "Add openstack-python3-charm-antelope-jobs" --branch master charm-aodh recheck
+#
+
+import argparse
+import json
+import logging
+import subprocess
+import sys
+
+
+def _get_curent_patch_revision(charm, message, topic, branch):
+    cmd = ['ssh', '-p', '29418', 'coreycb@review.opendev.org', 'gerrit',
+           'query', '--format=JSON', '--current-patch-set', 'status:open',
+           f"repo:openstack/{charm}"]
+    if message:
+        cmd.append(f"message:\"{message}\"")
+    if topic:
+        cmd.append(f"topic:{topic}")
+    if branch:
+        cmd.append(f"branch:{branch}")
+    output = subprocess.check_output(cmd)
+    output_dict = json.loads(output.decode().split('\n', 1)[0])
+    return output_dict['currentPatchSet']['revision']
+
+def _add_comment(charm, comment, revision):
+    cmd = ['ssh', '-p', '29418', 'coreycb@review.opendev.org', 'gerrit',
+           'review', '--project', f"openstack/{charm}", '--message',
+           comment, revision]
+    subprocess.check_call(cmd)
+
+def main():
+    parser = argparse.ArgumentParser(description="Create new upstream releases")
+    parser.add_argument(
+        'charm',
+        help='charm name'
+    )
+    parser.add_argument(
+        'comment',
+        help='comment to add to charm review'
+    )
+    parser.add_argument(
+        '-m',
+        '--message',
+        required=False,
+        help='commit message for finding matching review'
+    )
+    parser.add_argument(
+        '-t',
+        '--topic',
+        required=False,
+        help='review topic for finding matching review'
+    )
+    parser.add_argument(
+        '-b',
+        '--branch',
+        required=False,
+        help='git branch for finding matching review'
+    )
+    parser.add_argument(
+        '-v',
+        '--verbose',
+        help='enable verbose logging',
+        action='store_true'
+    )
+    args = parser.parse_args()
+
+    loglevel = logging.INFO
+    if args.verbose:
+        loglevel = logging.DEBUG
+    logging.basicConfig(format='%(levelname)s: %(message)s', level=loglevel)
+
+
+    revision = _get_curent_patch_revision(args.charm, args.message,
+                                          args.topic, args.branch)
+
+    _add_comment(args.charm, args.comment, revision)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
